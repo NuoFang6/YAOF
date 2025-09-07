@@ -13,6 +13,10 @@ on:
         description: '是否执行固件编译与发布 (Build firmware & release after archiving)'
         required: false
         default: 'false'
+      include_dl:
+        description: '源码归档是否包含 dl 源码缓存 (Include dl/ source cache in full archive)'
+        required: false
+        default: 'false'
   watch:
     types: started
 
@@ -108,23 +112,59 @@ jobs:
       run: |
         make -j$(($(nproc) + 1)) package/network/utils/nftables/refresh V=s
 
-    - name: Archive Source
+    - name: Prepare dl manifest
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
+      working-directory: ${{ github.workspace }}/openwrt
+      run: |
+        if [ -d dl ]; then
+          echo "Generating dl manifest...";
+          (cd dl; ls -1 > ../dl.MANIFEST.txt || true)
+          echo "dl file count: $(wc -l < dl.MANIFEST.txt || echo 0)" >> dl.MANIFEST.txt
+        fi
+        cp dl.MANIFEST.txt .. 2>/dev/null || true
+    - name: Archive Source (lite, exclude dl & build outputs)
       if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
       run: |
-        echo "Packing source with zstd -15 before full build..."
-        tar -I 'zstd -15 -T0' -cf openwrt-build.tar.zst ./openwrt || true
-        ls -lh openwrt-build.tar.zst
-    - name: Upload Source Archive
+        echo "Packing LITE source (exclude build_dir, staging_dir, bin, tmp, dl, .git) with zstd -15 ..."
+        tar \
+          --exclude='./openwrt/bin' \
+          --exclude='./openwrt/build_dir' \
+          --exclude='./openwrt/staging_dir' \
+          --exclude='./openwrt/tmp' \
+          --exclude='./openwrt/dl' \
+          -I 'zstd -15 -T0' -cf openwrt-source-lite.tar.zst ./openwrt || true
+        ls -lh openwrt-source-lite.tar.zst
+    - name: Upload Source Archive (lite)
       if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
       uses: actions/upload-artifact@v4
       with:
-        name: openwrt-build
-        path: openwrt-build.tar.zst
+        name: openwrt-source-lite
+        path: |
+          openwrt-source-lite.tar.zst
+          dl.MANIFEST.txt
         retention-days: 7
-    - name: Cleanup Source Archive
+    - name: Archive Source (full-with-dl)
+      if: ${{ (github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true') && inputs.include_dl == 'true' }}
+      run: |
+        echo "Packing FULL source (exclude build outputs but keep dl) with zstd -15 ..."
+        tar \
+          --exclude='./openwrt/bin' \
+          --exclude='./openwrt/build_dir' \
+          --exclude='./openwrt/staging_dir' \
+          --exclude='./openwrt/tmp' \
+          -I 'zstd -15 -T0' -cf openwrt-source-full-with-dl.tar.zst ./openwrt || true
+        ls -lh openwrt-source-full-with-dl.tar.zst
+    - name: Upload Source Archive (full-with-dl)
+      if: ${{ (github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true') && inputs.include_dl == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-source-full-with-dl
+        path: openwrt-source-full-with-dl.tar.zst
+        retention-days: 7
+    - name: Cleanup Source Archives
       if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
       run: |
-        rm -f openwrt-build.tar.zst || true
+        rm -f openwrt-source-lite.tar.zst openwrt-source-full-with-dl.tar.zst 2>/dev/null || true
 
     - name: Compile Openwrt (Full Build)
       if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware == 'true' }}
