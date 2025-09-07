@@ -4,6 +4,15 @@ on:
 #  schedule:
 #    - cron: 5 6 * * 0
   workflow_dispatch:
+    inputs:
+      upload_source:
+        description: '是否在编译前打包并上传源码 (Upload compressed source before compile)'
+        required: false
+        default: 'true'
+      build_firmware:
+        description: '是否执行固件编译与发布 (Build firmware & release after archiving)'
+        required: false
+        default: 'false'
   watch:
     types: started
 
@@ -94,23 +103,47 @@ jobs:
       working-directory: ${{ github.workspace }}/openwrt
       run: |
         make download -j50
-    - name: Compile Openwrt
+    - name: Refresh nftables (prepare before full build)
+      working-directory: ${{ github.workspace }}/openwrt
+      run: |
+        make -j$(($(nproc) + 1)) package/network/utils/nftables/refresh V=s
+
+    - name: Archive Source
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
+      run: |
+        echo "Packing source with zstd -15 before full build..."
+        tar -I 'zstd -15 -T0' -cf openwrt-build.tar.zst ./openwrt || true
+        ls -lh openwrt-build.tar.zst
+    - name: Upload Source Archive
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-build
+        path: openwrt-build.tar.zst
+        retention-days: 7
+    - name: Cleanup Source Archive
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_source == 'true' }}
+      run: |
+        rm -f openwrt-build.tar.zst || true
+
+    - name: Compile Openwrt (Full Build)
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware == 'true' }}
       working-directory: ${{ github.workspace }}/openwrt
       id: compileopenwrt
       continue-on-error: true
       run: |
-        #echo | make kernel_oldconfig -j$(($(nproc) + 1)) 
-        make -j$(($(nproc) + 1)) package/network/utils/nftables/refresh V=s
+        #echo | make kernel_oldconfig -j$(($(nproc) + 1))
         IGNORE_ERRORS=1 make -j$(($(nproc) + 1))
         echo $?
     - name: If Error
+      if: ${{ (github.event_name != 'workflow_dispatch' || inputs.build_firmware == 'true') && steps.compileopenwrt.outcome == 'failure' }}
       working-directory: ${{ github.workspace }}/openwrt
-      if: steps.compileopenwrt.outcome == 'failure'
       run: |
         cat ./.config
         echo '================================================================'
         make -j1 V=s
     - name: Organize files
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware == 'true' }}
       id: organize
       run: |
         rm -rf ./artifact/
@@ -126,6 +159,7 @@ jobs:
         zip R2S-GC404-$(date +%Y-%m-%d)-${{ env.latest_release }}-sfs.zip *r2s*squashfs*
         ls -Ahl
     - name: Create release
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware == 'true' }}
       id: create_release
       uses: ncipollo/release-action@main
       with:
