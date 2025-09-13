@@ -47,6 +47,7 @@ cp -rf ../PATCH/kernel/6.7_FQ_packet_scheduling/* ./target/linux/generic/backpor
 cp -rf ../PATCH/kernel/arm/* ./target/linux/generic/hack-6.6/
 # BBRv3
 cp -rf ../PATCH/kernel/bbr3/* ./target/linux/generic/backport-6.6/
+cp -rf ../PATCH/pkgs/iproute2/* ./package/network/utils/iproute2/patches/
 # LRNG
 cp -rf ../PATCH/kernel/lrng/* ./target/linux/generic/hack-6.6/
 echo '

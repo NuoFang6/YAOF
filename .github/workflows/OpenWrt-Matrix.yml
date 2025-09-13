@@ -178,7 +178,7 @@ jobs:
           LLVM_VER="21.1.1"
           LLVM_DIR="llvm-${LLVM_VER}-x86_64"
           LLVM_FILE="${LLVM_DIR}.tar.xz"
-          wget https://mirrors.edge.kernel.org/pub/tools/llvm/files/${LLVM_FILE} && \
+          wget -q https://mirrors.edge.kernel.org/pub/tools/llvm/files/${LLVM_FILE} && \
           tar -xf ${LLVM_FILE} && \
           export PATH="$(pwd)/${LLVM_DIR}/bin:$PATH" && \
           echo 'export PATH=$(pwd)/${LLVM_DIR}/bin:$PATH' >> ~/.bashrc && \
