@@ -127,7 +127,7 @@ jobs:
           workerid=${{ github.run_id }}
 
           # openwrt_source_name archive name
-          openwrt_source_name="openwrt-source-${{ matrix.name }}-${workerid}"
+          openwrt_source_name="openwrt-source-${{ matrix.name }}-${workerid}.tar"
 
           cat <<EOF | tee -a $GITHUB_ENV
           seed=$seed
@@ -165,7 +165,7 @@ jobs:
         run: |
           sudo -E apt-get -qq update
           sudo /bin/bash -c "$(curl -sL https://git.io/vokNn)"
-          sudo -E apt-fast -y -qq install asciidoc bash bcc bin86 binutils bison bzip2 clang file flex g++ g++-multilib gawk gcc-multilib gettext git gzip help2man intltool libbpf-dev libboost-dev libelf-dev libncurses-dev libssl-dev libthread-queue-any-perl libusb-dev libxml-parser-perl linux-tools-generic llvm make patch perl-modules pkg-config python3-dev python3-pip python3-pyelftools python3-setuptools rsync sharutils swig time unzip util-linux wget xsltproc zlib1g-dev zip zstd
+          sudo -E apt-fast -y -qq install asciidoc bash bcc bin86 binutils bison bzip2 file flex g++ g++-multilib gawk gcc-multilib gettext git gzip help2man intltool libbpf-dev libboost-dev libelf-dev libncurses-dev libssl-dev libthread-queue-any-perl libusb-dev libxml-parser-perl linux-tools-generic make patch perl-modules pkg-config python3-dev python3-pip python3-pyelftools python3-setuptools rsync sharutils swig time unzip util-linux wget xsltproc zlib1g-dev zip zstd
           sudo -E apt-fast -y -qq install dos2unix dwarves jq npm quilt
           sudo -E npm install -g pnpm
           pip3 install --user -U pylibfdt --break-system-packages
@@ -173,6 +173,17 @@ jobs:
           sudo -E apt-get -qq clean
           sudo -E git config --global user.name 'GitHub Actions' && git config --global user.email 'noreply@github.com'
           sudo -E git config --global core.abbrev auto
+
+          # 使用liunx推荐的llvm
+          LLVM_VER="21.1.1"
+          LLVM_DIR="llvm-${LLVM_VER}-x86_64"
+          LLVM_FILE="${LLVM_DIR}.tar.xz"
+          wget https://mirrors.edge.kernel.org/pub/tools/llvm/files/${LLVM_FILE} && \
+          tar -xf ${LLVM_FILE} && \
+          export PATH="$(pwd)/${LLVM_DIR}/bin:$PATH" && \
+          echo 'export PATH=$(pwd)/${LLVM_DIR}/bin:$PATH' >> ~/.bashrc && \
+          clang -v
+
           df -h
 
       - name: Prepare Mixedwrt
@@ -229,15 +240,18 @@ jobs:
           echo "Package folder ${{ env.openwrt_source_name }}"
           cd ..
           # Must use tar, otherwise symbolic links will be incomplete
-          tar -cf ${{ env.openwrt_source_name }}.tar openwrt
+          if [ "${{ inputs.upload_source }}" = "true" ]; then
+            tar -cf ${{ env.openwrt_source_name }} openwrt
+          fi
 
       # upload_source
       - name: Upload Source Archive
         if: inputs.upload_source
         uses: actions/upload-artifact@v4
         with:
+          name: ${{ env.openwrt_source_name }}
           path: |
-            ${{ env.openwrt_source_name }}.tar
+            ${{ env.openwrt_source_name }}
           retention-days: 5
 
       - name: Cache
@@ -247,12 +261,16 @@ jobs:
           mixkey: ${{ env.TARGET_DEVICE_ARCH }}
           prefix: ${{ github.workspace }}/openwrt
           skip_saving: ${{ !inputs.build_firmware }}
+          ccache: true
 
       - name: Make Download
         if: inputs.build_firmware
         working-directory: ${{ github.workspace }}/openwrt
         run: |
-          rm ../${{ env.openwrt_source_name }}.tar
+          if [ "${{ inputs.upload_source }}" = "true" ] && [ -f ../${{ env.openwrt_source_name }} ]; then
+            rm ../${{ env.openwrt_source_name }}
+          fi
+
           make download -j50
           make -j$(($(nproc) + 1)) package/network/utils/nftables/refresh V=s
 
