@@ -226,6 +226,16 @@ jobs:
           latest_release="$(curl -s https://github.com/openwrt/openwrt/tags | grep -Eo "v[0-9\.]+\-*r*c*[0-9]*.tar.gz" | sed -n '/[2-9][4-9]/p' | sed -n 1p | sed 's/.tar.gz//g' | sed 's/v//g')"
           echo "latest_release=${latest_release}" >> $GITHUB_ENV
 
+      # upload_source
+      - name: Upload Source Archive
+        if: inputs.upload_source
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.openwrt_source_name }}
+          path: |
+            openwrt/**
+          retention-days: 5
+
       - name: Cache
         uses: HiGarfield/cachewrtbuild@main
         with:
@@ -238,21 +248,6 @@ jobs:
         run: |
           make download -j50
           make -j$(($(nproc) + 1)) package/network/utils/nftables/refresh V=s
-
-      # upload_source
-      - name: Upload Source Archive
-        if: inputs.upload_source
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.openwrt_source_name }}
-          path: |
-            openwrt/**
-            !openwrt/bin/**
-            !openwrt/build_dir/**
-            !openwrt/staging_dir/**
-            !openwrt/tmp/**
-            !openwrt/dl/**
-          retention-days: 7
 
       # build_firmware
       - name: Compile Openwrt
