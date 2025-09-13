@@ -226,6 +226,10 @@ jobs:
           latest_release="$(curl -s https://github.com/openwrt/openwrt/tags | grep -Eo "v[0-9\.]+\-*r*c*[0-9]*.tar.gz" | sed -n '/[2-9][4-9]/p' | sed -n 1p | sed 's/.tar.gz//g' | sed 's/v//g')"
           echo "latest_release=${latest_release}" >> $GITHUB_ENV
 
+          echo "打包文件夹 ${{ env.openwrt_source_name }}"
+          cd ..
+          tar -cf ${{ env.openwrt_source_name }}.tar openwrt/**
+
       # upload_source
       - name: Upload Source Archive
         if: inputs.upload_source
@@ -233,11 +237,12 @@ jobs:
         with:
           name: ${{ env.openwrt_source_name }}
           path: |
-            openwrt/**
+            ${{ env.openwrt_source_name }}.tar
           retention-days: 5
 
       - name: Cache
         uses: HiGarfield/cachewrtbuild@main
+        if: inputs.build_firmware
         with:
           mixkey: ${{ env.TARGET_DEVICE_ARCH }}
           prefix: ${{ github.workspace }}/openwrt
@@ -303,7 +308,7 @@ jobs:
         run: df -h
 
       - name: Trigger badge sync for current platform
-        if: github.workflow == 'OpenWrt-Matrix' && inputs.build_firmware && always()
+        if: github.workflow == 'OpenWrt-Matrix' && inputs.build_firmware && steps.create_release.outcome != 'skipped' && always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
