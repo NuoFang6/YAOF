@@ -270,6 +270,7 @@ jobs:
         id: compileopenwrt
         continue-on-error: true
         run: |
+          make package/feeds/luci/luci-base/compile -j$(($(nproc) + 1)) # luci-app-openclash 依赖这个，否则随机编译失败
           IGNORE_ERRORS=1 make -j$(($(nproc) + 1))
           echo $?
       - name: If Error
